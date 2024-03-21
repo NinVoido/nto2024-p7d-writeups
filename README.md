@@ -288,7 +288,88 @@ print(check_pin(ans))
 ## Forensics
 ### Первая машина (Windows)
 
+#### Подготовка
+Получив образ виртуальной машины, сразу импортируем его в VirtualBox. Для удобства включим Drag'n'Drop и Clipboard в обе стороны, чтобы можно было удобно передавать файлы на и из виртуальной машины. Так же с помощью qemu-nbp смонтируем диск .vdi локально, чтобы иметь доступ к файлам с нашей машины.
+![vm png](./screenshots/virtualbox.png)
+![vm png](./screenshots/vm_inside.png)
+По легенде, ВПО попало на машину через вредоносное письмо. Убедимся в этом, увидев вредоносные файлы в кэше Outlook. Почта - ответ на первый вопрос.
 
+#### Первый взгляд
+В кэше почты находим архив с завлекающим названием classfied, содержащий подозрительный файл .cmd. Этот архив эксплуатирует уязвимость CVE-2023-38831 в WinRAR. Распакуем архив, увидим, что ВПО скачивалось на машину с хоста 95.169.192.220 в AppData/Rjomba.exe. Таким образом, получаем ответы на второй и третий вопросы.
+![archive png](./screenshots/archive.png)
+#### Анализ Rjomba.exe
+Отследим сетевую активность с помощью CharlesProxy. Настроив SSL проксирование, увидим запросы на api.telegram.org/..., что и послужит ответом на вопрос 7. Метод аутентификации - токен ТГ бота.
+![charles png](./screenshots/charles.png)
+
+Начнем статический анализ кода в ghidra. Заметим вызовы функций CheckForRemoteDebugger и isDebuggerPresent, которые противодействуют отладке. Это ответ на вопрос 4.
+![antidebug png](./screenshots/antidebug.png)
+
+Так же заметим присутствие vftable классов библиотеки CryptoPP, отвечающих за шифрование AES_CBC и SBOX AES. Это потверждает, что алгоритм шифрования - AES.
+
+![aes png](./screenshots/aes.png)
+
+Заметим, что многие строчки, важные для работы программы, хранятся в программе в зашифрованном виде и расшифровываются по одному и тому же алгоритму. Алгоритм приложен в скриншоте. Тогда, напишем дешифратор таких строк и попробуем задешифровать все строки в файле.
+
+![encrypt png](./screenshots/encrypt.png)
+
+```c
+#include 
+#include 
+
+typedef int undefined4;
+typedef long long undefined8;
+
+char param_2[100000] = {0};
+
+
+void FUN_14003332c(char* param_1,char* param_2, int cnt)
+
+{
+  unsigned long long uVar1;
+  char cVar2;
+  unsigned  int uVar3;
+  unsigned long long uVar4;
+  long long lVar5;
+  
+  uVar4 = 0;
+  lVar5 = (long long) param_2 - (long long) param_1;
+  do {
+    uVar1 = uVar4 / 0x32;
+    cVar2 = (char)uVar4;
+    uVar3 = (int)uVar4 + 1;
+    uVar4 = (unsigned long long)uVar3;
+    *param_1 = cVar2 + (char)uVar1 * -0x32 + 0x36U ^ param_1[lVar5];
+    param_1 = param_1 + 1;
+  } while ((int)uVar3 &lt; cnt);
+  return;
+}
+
+
+int main() {
+  while (gets(param_2)) {
+        FUN_14003332c(param_2, param_2, strlen(param_2));
+        puts(param_2);
+  }
+}
+```
+Будем использовать вот так:
+```bash
+gcc amogus.c
+strings Rjomba.exe -n16 | ./a.out
+```
+В выводе увидим много мусорных строк, а так же две строки длиной 32, длины ключа AES 256. Строки - amogusamogusamogusamogusamogusam, sugomasugomasugomasugomasugomasu, одна из них и оказывается искомым ключом. Таким же образом находим __iv__, который оказывается равен abababababababab. Получаем ответ на 6 вопрос.
+
+Чтобы ответить на последний вопрос, напишем программу-дешифратор на python:
+```python
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+from base64 import b64decode
+
+f = b64decode("K0uvQoK4IHyTxMGgFXcWFdYEPqZzSTO8G79diypFSlU=") # содержимое pass.txt.ransom
+c = AES.new(b"amogusamogusamogusamogusamogusam", AES.MODE_CBC, b"abababababababab")
+print(unpad(c.decrypt(f), block_size=16))
+```
+Получим пароль sFYZ#2z9VdUR9sm`3JRz и закроем последний вопрос!
 
 ### Вторая машина (Debian)
 
