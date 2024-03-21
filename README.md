@@ -414,3 +414,7 @@ rm /tmp/linpeas.txt
 
 # Defense
 ## Задание 1
+
+В файле traffic-lights-src/root/app/auth-api.py в функции changePassword была обнаружена уязвимость к SQL-инъекциям - ввод пользователя добавлялся в сырой запрос, который потом уже целиком исполнялся.
+
+![sqli png](./screenshots/sqli.png)
