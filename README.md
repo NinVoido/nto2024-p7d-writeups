@@ -217,7 +217,73 @@ int main() {
 
 ## Crypto
 ### Crypto1
+В данном сервисе необходимо найти секретное значение ПИН, чтобы получить флаг. Для проверки ПИН надо прислать на эндпойнт /api/CheckPin/. Перебрать ПИН таким образом не выйдет, так как эндпойнт принимает по одному запросу в минуту. Так же доступен эндпойнт /api/EncryptedPin/, возвращающий зашифрованное значение ПИН-кода, шифрованное AES CBC, с неизвестным ключом и значением _iv_, получаемым из текущего времени. Так же с помощью /api/EncryptPin можно получить зашифрованное значение произвольного ПИН-кода, шифрованное такими же параметрами.
 
+Заметив, что _iv_ применяется до операции шифрования, становится понятно, что можно перебирать шифротексты ПИН-кодов до того, пока шифротекст не совпадет с полученным из /api/EncryptedPin/. Однако, каждую секунду шифротекст искомого ПИН-кода нужно обновлять, так как каждую секунду обновляется __iv__. Код, эксплуатирующий уязвимость прикреплён.
+```python
+import requests
+import base64
+import time
+import json
+import tqdm
+
+URL = "http://192.168.12.12:5000/"
+
+
+def time2iv(time):
+    return time.to_bytes(16, byteorder="big")
+
+
+def xor(a, b):
+    r = b""
+    for i, j in zip(a, b):
+        r += bytes([i ^ j])
+    return r
+
+
+def enc_pin(p, empty=False):
+    r = requests.post(
+        URL + "/api/EncryptPin", json=({"foo": "bar"} if empty else {"pin": p})
+    )
+    return base64.b64decode(json.loads(r.text)["encrypted_pin"])
+
+
+def get_enc_pin():
+    r = requests.get(URL + "/api/EncryptedPin")
+    return base64.b64decode(json.loads(r.text)["encrypted_pin"])
+
+
+def get_time():
+    r = requests.get(URL + "/api/Time")
+    return json.loads(r.text)["current_time"]
+
+
+def check_pin(p, empty=False):
+    r = requests.post(
+        URL + "/api/CheckPin", json=({"foo": "bar"} if empty else {"pin": p})
+    )
+    return r.text
+
+
+assert time2iv(int(time.time())) == time2iv(get_time())
+
+enc = get_enc_pin()
+
+first_time = int(time.time())
+
+for i in tqdm.tqdm(range(100000), desc="Bruting pin..."):
+
+    if int(time.time()) != first_time:
+        enc = get_enc_pin()
+        first_time = int(time.time())
+
+    if enc_pin(i) == enc:
+        print(f"[+] pin is {i}")
+        ans = i
+        break
+
+print(check_pin(ans))
+```
 
 ## Forensics
 ### Первая машина (Windows)
